@@ -1,0 +1,16 @@
+*.png
+*.npy
+*.txt
+*.os
+*.so
+*.json
+*.mat
+class_output/
+generate_images/
+history/
+images/
+tmp/
+__pycache__/
+.ipynb_checkpoints/
+main_data/
+modeling/
