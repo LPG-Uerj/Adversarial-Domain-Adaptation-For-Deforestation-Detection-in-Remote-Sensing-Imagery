@@ -35,8 +35,16 @@ Aside from that, also related to the dataset handling, the "dataset_preprocessin
 
 ## How to run
 ### Environment
+The main Python packages from the eviroment used for experiments:
+```
+python=3.7.9
+scikit-image=0.17.2
+scikit-learn=0.23.2
+tensorflow=2.3.0
+torch=1.11.0+cu115
+```
 
-### Code
+### Scripts
 Once you have the dataset and the parameters organized you can simply run:
  - step 1 can be run  independently of other steps and generated data:
     ```
