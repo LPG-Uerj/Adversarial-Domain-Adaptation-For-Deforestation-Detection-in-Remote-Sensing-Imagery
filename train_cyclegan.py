@@ -1,40 +1,25 @@
-#!/usr/bin/env python
-# coding: utf-8
 
-# In[ ]:
-
-
-# coding: utf-8
-import sys
+import glob
+import numpy as np
 import os
+import random
+import tifffile
+import time
+
+import torch
+import torch.nn as nn
+
+from utilities import training_utils, utils
+from model_architectures import DeepLabV3plus, GAN
+from parameters.training_parameters import Train_cyclegan, Global
+
 os.environ["OMP_NUM_THREADS"] = "7" # 7 OpenMP threads + 1 Python thread = 800% CPU util.
 #os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
-import time
-import json
-import numpy as np
-import torch
-import torch.nn as nn
-import utils
-import random
-import tifffile
-import glob
-
-from Tools import *
-import DeepLabV3plus
-import GAN
-from torchinfo import summary
-
-# from pedro.models import networks
-# import GAN_parameters
-# from pedro.models.image_pool import ImagePool
-
-
-
-def train(source, target, args, global_args):
+def train(source, target, parameters: Train_cyclegan, global_parameters: Global):
     print("NUMBER OF CUDA DEVICES: ", torch.cuda.device_count())
     device = torch.device("cuda:0")
-    output_path = args.output_path
+    output_path = parameters.output_path
 
     path_pre = []
     path_pre.append(output_path)
@@ -45,64 +30,64 @@ def train(source, target, args, global_args):
             os.makedirs(p)
             print('\''+ p + '\'' + " path created")
 
-    patch_size = args.patch_size
-    num_classes = args.num_classes
-    channels = args.channels
+    patch_size = parameters.patch_size
+    num_classes = parameters.num_classes
+    channels = parameters.channels
 
-    mini_batch_size = args.batch_size
-    # num_mini_batches = args.num_batches
-    num_epochs = args.num_epochs
-    save_model_each_n_epoch = args.save_model_each_n_epoch
+    mini_batch_size = parameters.batch_size
+    # num_mini_batches = parameters.num_batches
+    num_epochs = parameters.num_epochs
+    save_model_each_n_epoch = parameters.save_model_each_n_epoch
 
     # losses weights (lambdas) 
-    A2B_cyclic_loss_lambda = args.A2B_cyclic_loss_lambda
-    B2A_cyclic_loss_lambda = args.B2A_cyclic_loss_lambda
-    indentity_loss_lambda = args.indentity_loss_lambda
-    descriminator_loss_lambda = args.descriminator_loss_lambda
-    semantic_loss_lambda = args.semantic_loss_lambda
-    diff_loss_lambda = args.diff_loss_lambda
+    A2B_cyclic_loss_lambda = parameters.A2B_cyclic_loss_lambda
+    B2A_cyclic_loss_lambda = parameters.B2A_cyclic_loss_lambda
+    indentity_loss_lambda = parameters.indentity_loss_lambda
+    descriminator_loss_lambda = parameters.descriminator_loss_lambda
+    semantic_loss_lambda = parameters.semantic_loss_lambda
+    diff_loss_lambda = parameters.diff_loss_lambda
 
-    use_diff_loss = args.use_diff_loss
+    use_diff_loss = parameters.use_diff_loss
 
     # Learning rates
-    descriminator_learning_rate = args.descriminator_learning_rate
-    generator_learning_rate = args.generator_learning_rate
-    semantic_learning_rate = args.semantic_learning_rate
+    descriminator_learning_rate = parameters.descriminator_learning_rate
+    generator_learning_rate = parameters.generator_learning_rate
+    semantic_learning_rate = parameters.semantic_learning_rate
 
     # semantic train parameters
-    weights = args.weights
-    gamma = args.gamma
-    dilation_rates = args.dilation_rates
+    weights = parameters.weights
+    gamma = parameters.gamma
+    dilation_rates = parameters.dilation_rates
 
-    source_domain = global_args.source_domain
-    target_domain = global_args.target_domain
+    source_domain = global_parameters.source_domain
+    target_domain = global_parameters.target_domain
 
-    use_se = args.use_semantic_loss
+    use_se = parameters.use_semantic_loss
     print("[*] Semantic_loss:", use_se)
 
-    save_previews = args.save_adaptation_previews
-    continue_train = args.continue_train
+    save_previews = parameters.save_adaptation_previews
+    continue_train = parameters.continue_train
     
     if continue_train:
-        checkpoint_path = glob.glob(os.path.join(global_args.cyclegan_models_path, "checkpoint*"))
+        checkpoint_path = glob.glob(os.path.join(global_parameters.cyclegan_models_path, "checkpoint*"))
         checkpoint_path = checkpoint_path[0]
         checkpoint = torch.load(checkpoint_path)
 
 
     print("loading datasets...")
-    total_patches_per_epoch = args.total_patches_per_epoch
+    total_patches_per_epoch = parameters.total_patches_per_epoch
     train_source = source.cycle_coor
     train_target = target.cycle_coor
     total_patches_per_epoch = min((len(train_source), len(train_target), total_patches_per_epoch))
     num_mini_batches = total_patches_per_epoch//mini_batch_size
     print("[*] Patches per epoch:", num_mini_batches * mini_batch_size)
 
-    aug_idx = augmentations_index(np.zeros(total_patches_per_epoch))
+    aug_idx = training_utils.augmentations_index(np.zeros(total_patches_per_epoch))
 
 
     if use_se:
         # print("[*] Semantic_loss2:", use_se)
-        deep_lab_v3p = DeepLabV3plus.create(args)
+        deep_lab_v3p = DeepLabV3plus.create(parameters)
         deep_lab_v3p = deep_lab_v3p.to(device)
         
     class ModelFitter(utils.ModelFitter):
@@ -147,7 +132,7 @@ def train(source, target, args, global_args):
                 self.gamma = gamma
                 self.semantic_learning_rate = semantic_learning_rate
                 self.class_weights = torch.FloatTensor(weights).cuda()
-                self.seg_loss_fn = FocalLoss(weight = self.class_weights, gamma = self.gamma)       
+                self.seg_loss_fn = training_utils.FocalLoss(weight = self.class_weights, gamma = self.gamma)       
                 self.optim_seg = torch.optim.Adam(deep_lab_v3p.parameters(), lr = self.semantic_learning_rate)
                 # self.seg_loss_fn = nn.CrossEntropyLoss()
                 # self.optim_seg = torch.optim.Adadelta(deep_lab_v3p.parameters())
@@ -226,7 +211,7 @@ def train(source, target, args, global_args):
                 self.loss_G_iden = nn.L1Loss()
 
             # labels
-            if args.patch_size == 64:
+            if parameters.patch_size == 64:
                 label_shape = (mini_batch_size,) + (1, 6, 6) #  change shape when patch size is not 256
             else:
                 label_shape = (mini_batch_size,) + (1, 30, 30) #  change shape when patch size is not 256
@@ -310,11 +295,11 @@ def train(source, target, args, global_args):
             src_coor = src_batch[:,:2]
             src_aug = src_batch[:,2]
             if self.use_diff_loss:
-                x , y, z1 = patch_extraction(self.img[source_domain], self.gt[source_domain], 
+                x , y, z1 = training_utils.patch_extraction(self.img[source_domain], self.gt[source_domain], 
                     src_coor, patch_size, aug_batch = src_aug, diff_reference_extract = True,
                     diff_reference = self.diff_ref[source_domain])
             else:
-                x , y = patch_extraction(self.img[source_domain], self.gt[source_domain], 
+                x , y = training_utils.patch_extraction(self.img[source_domain], self.gt[source_domain], 
                     src_coor, patch_size, aug_batch = src_aug)
             batch_data.append(x)
             batch_data.append(y)
@@ -323,11 +308,11 @@ def train(source, target, args, global_args):
             tgt_coor = tgt_batch[:,:2]
             tgt_aug = tgt_batch[:,2]
             if self.use_diff_loss:
-                x , y, z2 = patch_extraction(self.img[target_domain], self.gt[target_domain], 
+                x , y, z2 = training_utils.patch_extraction(self.img[target_domain], self.gt[target_domain], 
                 tgt_coor, patch_size, aug_batch = tgt_aug, diff_reference_extract = True,
                 diff_reference = self.diff_ref[target_domain])
             else:
-                x , y = patch_extraction(self.img[target_domain], self.gt[target_domain], 
+                x , y = training_utils.patch_extraction(self.img[target_domain], self.gt[target_domain], 
                 tgt_coor, patch_size, aug_batch = tgt_aug)
             batch_data.append(x)
             batch_data.append(y)
@@ -355,7 +340,7 @@ def train(source, target, args, global_args):
                 DA_loss_real = self.loss_D(x, y)
                 x = self.D_B(real_images_B)
                 DB_loss_real = self.loss_D(x, y)
-                print('[*****]', synthetic_images_A.shape)
+                # print('[*****]', synthetic_images_A.shape)
                 # exit()
                 x = self.D_A(synthetic_images_A)
                 y= self.zeros
@@ -525,14 +510,14 @@ def train(source, target, args, global_args):
                         coor_B[0] = train_target[random.randint(0,(len(train_target)-1))]
                         testString = 'test'                        
 
-                    a , c = patch_extraction(self.img[source_domain], 
+                    a , c = training_utils.patch_extraction(self.img[source_domain], 
                         self.gt[source_domain], coor_A, patch_size)
                     a = torch.from_numpy(a).float().to(device)
                     # print(a.shape)
                     a2b = self.G_A2B(a)
                     back2a = self.G_B2A(a2b)
 
-                    b , c = patch_extraction(self.img[target_domain], 
+                    b , c = training_utils.patch_extraction(self.img[target_domain], 
                         self.gt[target_domain], coor_B, patch_size)
                     b = torch.from_numpy(b).float().to(device)
                     b2a = self.G_A2B(b)
@@ -597,7 +582,6 @@ def train(source, target, args, global_args):
     
 
 
-from parameters.training_parameters import Train_cyclegan, Global
 from dataset_preprocessing.dataset_select import select_domain
 if __name__=='__main__':
     global_parameters = Global()
@@ -610,10 +594,12 @@ if __name__=='__main__':
     
     source_params.patches_dimension = train_parameters.patch_size
     source_params.stride = source_params.train_source_stride
-    ready_domain(source, source_params, train_set = False, cyclegan_set = True)
+    training_utils.ready_domain(source, source_params, train_set = False, cyclegan_set = True)
     
     target_params.patches_dimension = train_parameters.patch_size
     target_params.stride = target_params.train_source_stride
-    ready_domain(target, target_params, train_set = False, cyclegan_set = True)
+    training_utils.ready_domain(target, target_params, train_set = False, cyclegan_set = True)
 
     train(source, target, train_parameters, global_parameters)
+    
+    print('[*] CycleGAN Training Finalized!')

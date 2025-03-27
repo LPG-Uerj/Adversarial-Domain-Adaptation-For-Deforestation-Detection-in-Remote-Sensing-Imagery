@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import NoNorm
 import torch
 import torch.nn as nn
-import utils
+import Desmatamento.code.utilities.utils as utils
 device = torch.device("cpu")
 import parameters
 #device = torch.device("cuda:0")

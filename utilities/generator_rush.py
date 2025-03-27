@@ -1,10 +1,12 @@
 import os
 
-from Amazon_PA import *
-from Amazon_RO import *
-from Cerrado_MA import *
+import sys
+sys.append('..')
+from dataset_preprocessing.Amazon_PA import *
+from dataset_preprocessing.Amazon_RO import *
+from dataset_preprocessing.Cerrado_MA import *
 
-from reconstruction_tool import *
+from Desmatamento.code.utilities.reconstruction_tool import *
 
 def save_gans_adpted_domains(domain, domain_args, gan_models_path, save_path, 
 	rec_options, A2B_or_B2A = "A2B", only_last_gan = False, pedro = False, net_ = False):

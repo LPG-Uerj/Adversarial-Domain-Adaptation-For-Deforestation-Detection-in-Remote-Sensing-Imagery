@@ -1,34 +1,37 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# In[ ]:
-
-
-# coding: utf-8
+import argparse
+import numpy as np
 import os
+from scipy.special import softmax
+
+import torch
+import torch.nn as nn
+
+
+from model_architectures import DeepLabV3plus
+
+# Utilities
+from utilities import utils, training_utils
+# Parameters
+from parameters.training_parameters import Train_adapted_target, Global, Train_source
+
 os.environ["OMP_NUM_THREADS"] = "7" # 7 OpenMP threads + 1 Python thread = 800% CPU util.
 #os.environ["CUDA_VISIBLE_DEVICES"] = "2"
 
-import glob
-import json
-import numpy
-import PIL.Image
-import matplotlib.pyplot as plt
-from matplotlib.colors import NoNorm
-import torch
-import torch.nn as nn
-import utils
-
-from Tools import *
-import DeepLabV3plus
-# import GAN
-from scipy.special import softmax
+def parser_call():
+    parser = argparse.ArgumentParser()
+    
+    # Arguments
+    parser.add_argument("-source_model", type=str, help="Source model.", required=True)    
+    parser.add_argument("-a2b_model", type=str, help="Source(A) to Target(B) Domain Adaptation Model.", required=True)    
+    parser.add_argument("-b2a_model", type=str, help="Target(B) to Source(A) Domain Adaptation Model.", required=True)    
+    
+    return parser.parse_args()
 
 
-def train(source, target, args, train_source_args, global_args, best_source_model):
+def train(source, target, train_adapted_parameters: Train_adapted_target, train_source_parameters: Train_source, global_parameters: Global, best_source_model):
 
     device = torch.device("cuda:0")
-    output_path = args.output_path
+    output_path = train_adapted_parameters.output_path
 
     path_pre = []
     path_pre.append(output_path)
@@ -39,52 +42,52 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
             os.makedirs(p)
             print('\''+ p + '\'' + " path created")
 
-    patch_size = args.patch_size
-    num_classes = args.num_classes
-    channels = args.channels
+    patch_size = train_adapted_parameters.patch_size
+    num_classes = train_adapted_parameters.num_classes
+    channels = train_adapted_parameters.channels
 
-    mini_batch_size = args.batch_size
-    iteration_modifier = args.iteration_modifier
+    mini_batch_size = train_adapted_parameters.batch_size
+    iteration_modifier = train_adapted_parameters.iteration_modifier
     if iteration_modifier < 1:
         iteration_modifier = 1
-    num_epochs = args.num_epochs
+    num_epochs = train_adapted_parameters.num_epochs
 
     # losses weights (lambdas)
-    semantic_loss_lambda = args.semantic_loss_lambda
-    cyclic_loss_lambda = args.cyclic_loss_lambda
-    feature_discriminator_loss_lambda = args.feature_discriminator_loss_lambda
+    semantic_loss_lambda = train_adapted_parameters.semantic_loss_lambda
+    cyclic_loss_lambda = train_adapted_parameters.cyclic_loss_lambda
+    feature_discriminator_loss_lambda = train_adapted_parameters.feature_discriminator_loss_lambda
 
     # Learning rates
-    learning_rate = args.learning_rate
-    # descriminator_learning_rate = args.descriminator_learning_rate
-    # encoder_learning_rate = args.encoder_learning_rate
+    learning_rate = train_adapted_parameters.learning_rate
+    # descriminator_learning_rate = train_adapted_parameters.descriminator_learning_rate
+    # encoder_learning_rate = train_adapted_parameters.encoder_learning_rate
 
-    weights = args.weights
-    gamma = args.gamma
+    weights = train_adapted_parameters.weights
+    gamma = train_adapted_parameters.gamma
 
-    dilation_rates = args.dilation_rates
+    dilation_rates = train_adapted_parameters.dilation_rates
 
-    use_early_stop = args.early_stop
-    early_stop_limit = args.early_stop_limit
+    use_early_stop = train_adapted_parameters.early_stop
+    early_stop_limit = train_adapted_parameters.early_stop_limit
 
-    source_domain = global_args.source_domain
-    target_domain = global_args.target_domain
+    source_domain = global_parameters.source_domain
+    target_domain = global_parameters.target_domain
 
-    task_loss = args.task_loss
-    pseudo_label = args.pseudo_label
-    feature_adapt = args.feature_adaptation
+    task_loss = train_adapted_parameters.task_loss
+    pseudo_label = train_adapted_parameters.pseudo_label
+    feature_adapt = train_adapted_parameters.feature_adaptation
 
     assert (task_loss) or (pseudo_label)
 
-    large_latent_space = args.large_latent_space
-    label_type = args.label_type #  1 - use a matrix as label for each domain
+    large_latent_space = train_adapted_parameters.large_latent_space
+    label_type = train_adapted_parameters.label_type #  1 - use a matrix as label for each domain
     # 0 - use a scaler as label for each domain, 1 - use a matrix as label for each domain, 2 - create merged/mixed matrices as labels
-    train_encoder_only_on_target_domain = args.train_encoder_only_on_target_domain 
-    discriminator_type = args.discriminator_type # 0 for best discriminator_type
+    train_encoder_only_on_target_domain = train_adapted_parameters.train_encoder_only_on_target_domain 
+    discriminator_type = train_adapted_parameters.discriminator_type # 0 for best discriminator_type
 
     
     best_source_model_path = best_source_model
-    # target_to_source_model_path = global_args.A2B_best_gan_model
+    # target_to_source_model_path = global_parameters.A2B_best_gan_model
 
 
     # 'best_target_model_path' is the best on source (through validation), which
@@ -112,10 +115,10 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
 
         
     print("Defining and loading Networks...")   
-    deep_lab_v3p = DeepLabV3plus.create(args)
+    deep_lab_v3p = DeepLabV3plus.create(train_adapted_parameters)
     deep_lab_v3p = deep_lab_v3p.to(device)
 
-    source_deep_lab_v3p = DeepLabV3plus.create(train_source_args)
+    source_deep_lab_v3p = DeepLabV3plus.create(train_source_parameters)
     source_deep_lab_v3p = source_deep_lab_v3p.to(device) # source semantic model
     checkpoint1 = torch.load(best_source_model_path)
     source_deep_lab_v3p.load_state_dict(checkpoint1)
@@ -205,6 +208,7 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
     class ModelFitter(utils.ModelFitter):
         def __init__(self):
             super().__init__(num_epochs, num_mini_batches, output_path=output_path)
+            self.txt = "Best Classification Adapted Model:"
             
         def initialize(self):
             self.lambda_S = semantic_loss_lambda
@@ -224,7 +228,7 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
             print("learning rate: ", self.learning_rate)
 
             self.class_weights = torch.FloatTensor(weights).cuda()
-            self.seg_loss_fn = FocalLoss(weight = self.class_weights, gamma = self.gamma)       
+            self.seg_loss_fn = training_utils.FocalLoss(weight = self.class_weights, gamma = self.gamma)       
             self.optim_seg = torch.optim.Adam(deep_lab_v3p.parameters(), lr = self.learning_rate)
 
             self.feature_patch_size = patch_size // (8 if large_latent_space else 16)
@@ -235,8 +239,8 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
             
             # mog: precisa tirar comentario para usar feature
             if feature_adapt:
-	            self.optim_enc = torch.optim.Adadelta(encoder.parameters())
-	            self.optim_disc = torch.optim.Adadelta(discriminator.parameters())
+                self.optim_enc = torch.optim.Adadelta(encoder.parameters())
+                self.optim_disc = torch.optim.Adadelta(discriminator.parameters())
             self.train_adaptation = self.train_adaptation_regular
 
             self.validation_set = {}
@@ -280,7 +284,7 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
             coor_batch = batch[:,:2]
             aug_batch = batch[:, 2]
 
-            x , y = patch_extraction(self.img[source_domain], 
+            x , y = training_utils.patch_extraction(self.img[source_domain], 
                 self.gt[source_domain], coor_batch, patch_size, aug_batch = aug_batch)
             batch_data.append(x) # 0
             batch_data.append(y) # 1
@@ -289,7 +293,7 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
             coor_batch = batch[:,:2]
             aug_batch = batch[:, 2]
 
-            x , y = patch_extraction(self.img[target_domain], 
+            x , y = training_utils.patch_extraction(self.img[target_domain], 
                 self.gt[target_domain], coor_batch, patch_size, aug_batch = aug_batch)
             batch_data.append(x) # 2
             batch_data.append(y) # 3
@@ -299,7 +303,7 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
             # aug_batch = batch[:, 2]
             # mog: batch same as actual target
             
-            x , y = patch_extraction(self.img[target_domain + "_adapted"], 
+            x , y = training_utils.patch_extraction(self.img[target_domain + "_adapted"], 
                 self.gt[target_domain], coor_batch, patch_size, aug_batch = aug_batch)
             batch_data.append(x) # 4
             # batch_data.append(y)
@@ -343,7 +347,7 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
             # print(return_metrics(y,x))
             # print(calcula_metricas(y,x))
 
-            acc, f1, rec, prec, alert = return_metrics(y,x)
+            acc, f1, rec, prec, alert = training_utils.return_metrics(y,x)
             metrics["seg_acc"] = acc
             metrics["seg_f1"] = f1
             metrics["seg_rec"] = rec
@@ -359,9 +363,9 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
             # discriminator training:
             self.optim_disc.zero_grad()
             if label_type < 2:
-                x = numpy.concatenate((batch_data[0][:self.feature_shape[0]], batch_data[2][:self.feature_shape[0]]))
+                x = np.concatenate((batch_data[0][:self.feature_shape[0]], batch_data[2][:self.feature_shape[0]]))
                 x = torch.from_numpy(x).float().requires_grad_().to(device)
-                i = numpy.concatenate((numpy.ones(self.feature_shape), numpy.zeros(self.feature_shape)))
+                i = np.concatenate((np.ones(self.feature_shape), np.zeros(self.feature_shape)))
                 #j = numpy.ones(i.shape) #- i
                 y = torch.from_numpy(i).float().to(device)
                 # inv_y = torch.from_numpy(j).long().squeeze().to(device)
@@ -373,8 +377,8 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
                 assert label_type == 2
                 x = [torch.from_numpy(batch_data[0][:self.feature_shape[0]]).float().requires_grad_().to(device)]
                 x.append(torch.from_numpy(batch_data[2][:self.feature_shape[0]]).float().requires_grad_().to(device))
-                i = numpy.where(numpy.random.uniform(size=self.feature_shape) < .5, 1, 0)
-                j = numpy.ones(self.feature_shape) #- i
+                i = np.where(np.random.uniform(size=self.feature_shape) < .5, 1, 0)
+                j = np.ones(self.feature_shape) #- i
                 y = torch.from_numpy(i).long().squeeze().to(device)
                 inv_y = torch.from_numpy(j).long().squeeze().to(device)
                 i = torch.from_numpy(i).float().requires_grad_().to(device)
@@ -394,11 +398,11 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
             if train_encoder_only_on_target_domain:
                 x = batch_data[2][:self.feature_shape[0]]
                 x = torch.from_numpy(x).float().requires_grad_().to(device)
-                inv_y = numpy.ones(self.feature_shape)
+                inv_y = np.ones(self.feature_shape)
                 inv_y = torch.from_numpy(inv_y).float().to(device)
                 x = discriminator(encoder(x))
             elif label_type < 2:
-                x = numpy.concatenate((batch_data[0][:self.feature_shape[0]], batch_data[2][:self.feature_shape[0]]))
+                x = np.concatenate((batch_data[0][:self.feature_shape[0]], batch_data[2][:self.feature_shape[0]]))
                 x = torch.from_numpy(x).float().requires_grad_().to(device)
                 x = discriminator(encoder(x))
             else:
@@ -441,7 +445,7 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
 
                     val_x = softmax(val_x, axis = 1)
                     val_x = val_x.argmax(1)
-                    acc, f1, rec, prec, alert = return_metrics(val_y, val_x)
+                    acc, f1, rec, prec, alert = training_utils.return_metrics(val_y, val_x)
 
                     metrics[f"val_acc_{domain}"] = acc
                     metrics[f"val_f1_{domain}"] = f1
@@ -502,14 +506,62 @@ def train(source, target, args, train_source_args, global_args, best_source_mode
                 if epoch == 0:
                     best_target_model_path = path
                     theorical_best_target_model = path
+                    
+                    self.best_model = theorical_best_target_model
+                    
 
             print("[*] Best visible model so far:", best_target_model_path)
             print("[*] Best model so far:", theorical_best_target_model)
+            
+        
+        def finalize(self):
+            utils.log_best_model(self.txt, self.best_model)
 
     ModelFitter().fit()
     # return best_target_model_path, theorical_best_target_model
     return theorical_best_target_model
 
+
+
+from dataset_preprocessing.dataset_select import select_domain
+if __name__=='__main__':
+
+    global_parameters = Global()
+    train_source_parameters = Train_source()
+    train_adapted_parameters = Train_adapted_target()
+
+    args = parser_call()
+    assert os.path.isfile(args.source_model)
+    assert os.path.isfile(args.a2b_model)
+    assert os.path.isfile(args.b2a_model)
+    assert args.a2b_model != args.b2a_model
+    
+    rounds = train_adapted_parameters.number_of_rounds
+    this_models = []
+    base_path = train_adapted_parameters.output_path    
+    
+    source, source_params = select_domain(global_parameters.source_domain)
+    target, target_params = select_domain(global_parameters.target_domain)
+
+    # source_params.patches_dimension = train_adapted_parameters.patch_size
+    source_params.stride = source_params.train_source_stride
+    training_utils.ready_domain(source, source_params, train_set = True, augmented = True)
+    source.Prepare_GAN_Set(source_params, args.a2b_model, eval = False, load = False)
+
+    # target_args.patches_dimension = train_args.patch_size
+    target_params.stride = target_params.train_source_stride
+    training_utils.ready_domain(target, target_params, train_set = True, augmented = True)
+    target.Prepare_GAN_Set(target_params, args.b2a_model, 	eval = False, load = False)
+
+    for i in range(global_parameters.train_adapted_target_starting_round, rounds):
+        source_params.output_path = os.path.join(base_path, f"round_{i}")
+        print(source_params.output_path)
+        theorical_best_target_model = train(source, 
+        target, train_adapted_parameters, train_source_parameters, global_parameters, args.source_model)
+        this_models.append(theorical_best_target_model)
+
+    
+    print('[*] Adapted Target Training Finalized!')
 
 
 

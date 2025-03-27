@@ -1,14 +1,17 @@
+import os
 import numpy as np
 import tifffile
-import torch
-import GAN
-import os
-import utils
 
-from pedro import networks
-import GAN_parameters
-# from pedro.models import cycle_gan_model
+import torch
 import torch.nn as nn
+
+from . import networks, utils
+
+import sys
+sys.path.append('..')
+from model_architectures import GAN
+from model_architectures import GAN_parameters
+
 
 class opt_param():
     crop_size = 256 # equals patch size
@@ -278,12 +281,15 @@ class RemoteSensingPatchesContainer():
         #     # sio.savemat(self.save_path + 'Real_Target.mat', {'real_B': real_img_norm_B})
 
         
-def overlap_reconstruction(domain_image, domain_scaler, args, rec_options, path_to_weights, save_path, eval, pedro = False, net_ = False):
+def overlap_reconstruction(domain_image, domain_scaler, args, rec_options, path_to_weights, save_path, eval, alt_way = False, net_ = False):
 
     if eval == True:
-        save_path = save_path + "adapted_conc_" + args.dataset + "_eval"
+        # save_path = save_path + "adapted_conc_" + args.dataset + "_eval"
+        file_name = "adapted_conc_" + args.dataset + "_eval"
+        save_path = os.path.join(save_path, file_name)
     else:
-        save_path = save_path + "adapted_conc_" + args.dataset
+        file_name = "adapted_conc_" + args.dataset
+        save_path = os.path.join(save_path, file_name)
     
     # do = domain
     # img = do.conc_image
@@ -308,7 +314,7 @@ def overlap_reconstruction(domain_image, domain_scaler, args, rec_options, path_
     else:
         device = torch.device("cuda")
 
-    if pedro:
+    if alt_way:
         optm = GAN_parameters.cyclegan_model_options
         G_A2B = networks.define_G(optm.input_nc, optm.output_nc, optm.ngf, optm.netG, 
             optm.norm, not optm.no_dropout, optm.linear_output, optm.init_type, 
@@ -336,8 +342,8 @@ def overlap_reconstruction(domain_image, domain_scaler, args, rec_options, path_
 
             batch = Patch_Extraction_Test(img, this_coord, opt, from_source = True)
             batch = torch.from_numpy(batch).float().to(device)
-            # adapted_batch = G_A2B(batch)
-            adapted_batch = G_A2B(batch)[0]
+            adapted_batch = G_A2B(batch)
+            # adapted_batch = G_A2B(batch)[0]
             output['fake_B'] = adapted_batch
             
             rspc.store_current_visuals(output, counter)

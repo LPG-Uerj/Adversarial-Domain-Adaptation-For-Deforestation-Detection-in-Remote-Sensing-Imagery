@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import NoNorm
 import torch
 import torch.nn as nn
-import utils
+import Desmatamento.code.utilities.utils as utils
 
 
 # In[ ]:

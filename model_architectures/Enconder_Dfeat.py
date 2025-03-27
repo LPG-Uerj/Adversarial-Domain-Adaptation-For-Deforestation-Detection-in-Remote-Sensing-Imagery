@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 
 def create(deep_lab_v3p, discriminator_type):

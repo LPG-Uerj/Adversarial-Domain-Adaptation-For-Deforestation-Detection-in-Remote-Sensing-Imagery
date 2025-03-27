@@ -2,11 +2,14 @@ import os
 import sys
 import numpy as np
 import skimage.morphology
-from skimage.morphology import square, disk 
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from skimage.morphology import disk 
+from sklearn.preprocessing import StandardScaler
+import scipy.io as sio
 
-from Tools import *
-from reconstruction_tool import *
+import sys
+sys.path.append('..')
+from utilities import training_utils, reconstruction_tool
+
 
 class AM_PA():
     def __init__(self, args):
@@ -55,8 +58,8 @@ class AM_PA():
         # Pre-processing images
         if args.compute_ndvi:
             print('[*]Computing and stacking the ndvi band...')
-            ndvi_t1 = Compute_NDVI_Band(image_t1)
-            ndvi_t2 = Compute_NDVI_Band(image_t2)
+            ndvi_t1 = training_utils.Compute_NDVI_Band(image_t1)
+            ndvi_t2 = training_utils.Compute_NDVI_Band(image_t2)
             image_t1 = np.transpose(image_t1, (1, 2, 0))
             image_t2 = np.transpose(image_t2, (1, 2, 0))
             image_t1 = np.concatenate((image_t1, ndvi_t1), axis=2)
@@ -240,20 +243,20 @@ class AM_PA():
             if args.fixed_tiles:
                 if i == 0:
                     print("Cerrado i = 0")
-                    self.mask = mask_creation(self.images_norm[0].shape[0], self.images_norm[0].shape[1], args.horizontal_blocks, args.vertical_blocks, self.Train_tiles, self.Valid_tiles, self.Undesired_tiles)
+                    self.mask = training_utils.mask_creation(self.images_norm[0].shape[0], self.images_norm[0].shape[1], args.horizontal_blocks, args.vertical_blocks, self.Train_tiles, self.Valid_tiles, self.Undesired_tiles)
                     # self.central_pixels_coor_tr, self.y_train, self.central_pixels_coor_vl, self.y_valid = Central_Pixel_Definition(self.mask, self.references_t1[0], self.references_t2[0], args.patches_dimension, args.stride, args.porcent_of_last_reference_in_actual_reference)
-                    self.central_pixels_coor_tr, self.central_pixels_coor_vl = Coor_Pixel_Definition(self.mask, args.patches_dimension, args.stride, args.vertical_blocks, args.horizontal_blocks)
+                    self.central_pixels_coor_tr, self.central_pixels_coor_vl = training_utils.Coor_Pixel_Definition(self.mask, args.patches_dimension, args.stride, args.vertical_blocks, args.horizontal_blocks)
                     # if args.training_type == 'domain_adaptation_balance':
                     #     self.central_pixels_coor_tr_t, self.y_train_t, self.central_pixels_coor_vl_t, self.y_valid_t = Central_Pixel_Definition(self.mask, self.references_t1[1], self.references_t2[1], args.patches_dimension, args.stride, args.porcent_of_last_reference_in_actual_reference)
                 sio.savemat(args.save_checkpoint_path + 'mask.mat', {'mask': self.mask})
             else:
-                self.mask = mask_creation(self.images_norm[0].shape[0], self.images_norm[0].shape[1], args.horizontal_blocks, args.vertical_blocks, self.Train_tiles, self.Valid_tiles, self.Undesired_tiles)
+                self.mask = training_utils.mask_creation(self.images_norm[0].shape[0], self.images_norm[0].shape[1], args.horizontal_blocks, args.vertical_blocks, self.Train_tiles, self.Valid_tiles, self.Undesired_tiles)
                 sio.savemat(args.save_checkpoint_path + 'mask.mat', {'mask': self.mask})
-                self.central_pixels_coor_tr, self.y_train, self.central_pixels_coor_vl, self.y_valid = Central_Pixel_Definition(self.mask, self.references_t1[0], self.references_t2[0], args.patches_dimension, args.stride, args.porcent_of_last_reference_in_actual_reference)
+                self.central_pixels_coor_tr, self.y_train, self.central_pixels_coor_vl, self.y_valid = training_utils.Central_Pixel_Definition(self.mask, self.references_t1[0], self.references_t2[0], args.patches_dimension, args.stride, args.porcent_of_last_reference_in_actual_reference)
         if args.phase == 'test':
             print("Test PA")
-            self.mask = mask_creation(self.images_norm[0].shape[0], self.images_norm[0].shape[1], args.horizontal_blocks, args.vertical_blocks, self.Train_tiles, self.Valid_tiles, self.Undesired_tiles)
-            self.central_pixels_coor_ts = Coor_Pixel_Definition(self.mask, args.patches_dimension, args.stride, args.vertical_blocks, args.horizontal_blocks, test = True)
+            self.mask = training_utils.mask_creation(self.images_norm[0].shape[0], self.images_norm[0].shape[1], args.horizontal_blocks, args.vertical_blocks, self.Train_tiles, self.Valid_tiles, self.Undesired_tiles)
+            self.central_pixels_coor_ts = training_utils.Coor_Pixel_Definition(self.mask, args.patches_dimension, args.stride, args.vertical_blocks, args.horizontal_blocks, test = True)
             # self.central_pixels_coor_ts, self.y_test = Central_Pixel_Definition_For_Test(self.mask, np.zeros_like(self.references_t1[0]), np.zeros_like(self.references_t2[0]), args.patches_dimension, 1, args.phase)
             
         # It is important to note that in the case of domain adaptation procedure, the model will use the 
@@ -262,31 +265,31 @@ class AM_PA():
         # includes samples from both domains.
 
     def Coordinates_Train_Validation(self, args):
-        self.mask = mask_creation(self.images_norm[0].shape[0], self.images_norm[0].shape[1], args.horizontal_blocks, args.vertical_blocks, self.Train_tiles, self.Valid_tiles, self.Undesired_tiles)
-        self.central_pixels_coor_tr, self.central_pixels_coor_vl = Coor_Pixel_Definition(self.mask, args.patches_dimension, args.stride, args.horizontal_blocks, args.vertical_blocks)
+        self.mask = training_utils.mask_creation(self.images_norm[0].shape[0], self.images_norm[0].shape[1], args.horizontal_blocks, args.vertical_blocks, self.Train_tiles, self.Valid_tiles, self.Undesired_tiles)
+        self.central_pixels_coor_tr, self.central_pixels_coor_vl = training_utils.Coor_Pixel_Definition(self.mask, args.patches_dimension, args.stride, args.horizontal_blocks, args.vertical_blocks)
 
     def Coordinates_Test(self, args):
-        self.mask = mask_creation(self.images_norm[0].shape[0], self.images_norm[0].shape[1], args.horizontal_blocks, args.vertical_blocks, self.Train_tiles, self.Valid_tiles, self.Undesired_tiles)
-        self.central_pixels_coor_ts = Coor_Pixel_Definition(self.mask, args.patches_dimension, args.stride, args.vertical_blocks, args.horizontal_blocks, test = True)
+        self.mask = training_utils.mask_creation(self.images_norm[0].shape[0], self.images_norm[0].shape[1], args.horizontal_blocks, args.vertical_blocks, self.Train_tiles, self.Valid_tiles, self.Undesired_tiles)
+        self.central_pixels_coor_ts = training_utils.Coor_Pixel_Definition(self.mask, args.patches_dimension, args.stride, args.vertical_blocks, args.horizontal_blocks, test = True)
 
     def Coordinates_Cyclegan(self, args):
-        self.cycle_coor = No_Mask_Coor(self.images_norm[0].shape, args.patches_dimension, args.stride)
+        self.cycle_coor = training_utils.No_Mask_Coor(self.images_norm[0].shape, args.patches_dimension, args.stride)
 
     # def Prepare_Cycle_Set(self, args):
     #     sefl.augmented_cycle_train_set = prepare_set_with_aug(self.central_pixels_coor_tr, 
     #         self.new_reference, args.patches_dimension, only_defo = False, multiplier = False)
 
     def Prepare_Train_Set(self, args):
-        self.augmented_train_set = prepare_set_with_aug(self.central_pixels_coor_tr, 
+        self.augmented_train_set = training_utils.prepare_set_with_aug(self.central_pixels_coor_tr, 
             self.new_reference, args.patches_dimension, only_defo = True, multiplier = True)
 
     def Coordinates_Domain_Adaptation(self, args):
-        self.no_stride_coor = No_Mask_Coor(self.images_norm[0].shape, args.patches_dimension, args.patches_dimension)
+        self.no_stride_coor = training_utils.No_Mask_Coor(self.images_norm[0].shape, args.patches_dimension, args.patches_dimension)
 
     def Prepare_GAN_Set(self, args, path_to_weights, eval = False, load = False, 
         adapt_back_to_original = False):
 
-        rec_param = reconstruction_parameters(args, self)
+        rec_param = reconstruction_tool.reconstruction_parameters(args, self)
         # print(rec_param.crop_size)
 
         if eval:
@@ -297,8 +300,8 @@ class AM_PA():
             file_name = args.adapted_file_name
 
         if eval == True or load == False:
-        	overlap_reconstruction(self.conc_image, self.scaler, args, rec_param, 
-                path_to_weights, data_path, eval = eval, pedro=args.pedro, net_=args.net_)
+        	reconstruction_tool.overlap_reconstruction(self.conc_image, self.scaler, args, rec_param, 
+                path_to_weights, data_path, eval = eval)
 
         load_path = data_path + file_name + '.npy'
         self.adapted_image = np.load(load_path)
@@ -314,7 +317,7 @@ class AM_PA():
                 path_to_weights = splited_path[0] + "G_A2B" + splited_path[1]
 
             print("after", path_to_weights)
-            overlap_reconstruction(self.adapted_image, self.scaler, args, rec_param, 
+            reconstruction_tool.overlap_reconstruction(self.adapted_image, self.scaler, args, rec_param, 
                 path_to_weights, data_path, eval = eval)            
             self.adapted_image = np.load(load_path)
         # self.adapted_train_set = Get_GAN_Set(self.adapted_image.shape, args.patches_dimension, self.augmented_train_set)

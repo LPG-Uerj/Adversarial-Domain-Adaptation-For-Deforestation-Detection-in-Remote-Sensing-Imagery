@@ -1,22 +1,24 @@
-import os
+import concurrent.futures
 import itertools
-import time
 import json
-import random
 import numpy
+import os
 import PIL.Image
 import queue
-import concurrent.futures
+import random
+import time
 import traceback
-import ctypes
+
 import IPython
 from IPython.core.display import clear_output
 have_ipython = IPython.get_ipython() != None
+
 import torch
 import torch.nn as nn
-# import tensorflow
+import tensorflow
 
-from Tools import *
+from . import training_utils 
+
 
 
 #hannover_path = "/home/hanletia/Dataset/tmp/data/hannover/"
@@ -141,7 +143,7 @@ def make_split(n):
         indexB = ['past', 'present']
         for i,j in itertools.product(indexA, indexB):
             print(i, j)
-            utils.split_data(i, j, n)
+            split_data(i, j, n)
     else:
         print("Adjust 'uni_len' to < 2 first")
 
@@ -440,8 +442,8 @@ def patch_extraction(img, gt, coor_batch, patch_size, aug_batch = [], tf = False
     # print(type(aug_batch))
 
     if len(aug_batch) > 0:
-        out_img = apply_augmentations(out_img, aug_batch, tf = tf)
-        out_gt = apply_augmentations(out_gt, aug_batch)
+        out_img = training_utils.apply_augmentations(out_img, aug_batch, tf = tf)
+        out_gt = training_utils.apply_augmentations(out_gt, aug_batch)
 
     return out_img, out_gt
 
@@ -666,6 +668,17 @@ def slice_generator(data, slice_size):
             yield get_slice(data, i, slice_size)
 
 
+def log_best_model(txt, best_model_path, path='./tmp/best_models.txt'):
+    print('Logging model...')
+    
+    txt = txt + ' ' +  best_model_path
+    print(txt)
+    
+    with open(path, "a+") as file:
+        file.write(txt + '\n')
+        
+        
+
 class ModelFitter:
     '''
         Class responsible for the definition of the training steps.
@@ -687,10 +700,7 @@ class ModelFitter:
         self.do_not_clear_output = do_not_clear_output
         
         
-    def initialize(self):
-        '''
-            Run 
-        '''       
+    def initialize(self): 
         pass
     
     def pre_epoch(self, epoch):
@@ -707,7 +717,7 @@ class ModelFitter:
     
     def finalize(self):
         pass
-
+    
     def fit(self):
         self._output = []
         self.history = {}

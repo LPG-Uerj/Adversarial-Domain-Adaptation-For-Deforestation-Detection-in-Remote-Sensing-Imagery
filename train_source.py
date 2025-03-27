@@ -1,23 +1,16 @@
 
-
-
-# coding: utf-8
-import os
-# os.environ["OMP_NUM_THREADS"] = "7" # 7 OpenMP threads + 1 Python thread = 800% CPU util.
-#os.environ["CUDA_VISIBLE_DEVICES"] = "2"
-
-import glob
-import json
 import numpy as np
-from matplotlib.colors import NoNorm
-import torch
-import torch.nn as nn
-import utils
-
-from Tools import *
-import DeepLabV3plus
+import os
 from scipy.special import softmax
+import torch
 
+# Model Architecture
+from model_architectures import DeepLabV3plus
+
+# Utilies
+from utilities import training_utils, utils
+
+# Paraneters
 from parameters.training_parameters import Train_source, Global
 
 '''
@@ -91,8 +84,6 @@ def train(source, target, parameters: Train_source, global_parameters: Global)->
 
 class TrainFitter(utils.ModelFitter):
     def __init__(self, num_epochs, num_mini_batches, source, target, parameters, global_parameters, train_set, dlv3, device, output_path):
-        # super().__init__(num_epochs, num_mini_batches, output_path=output_path)
-        # super().__init__(parameters, train_set, model)
         super().__init__(num_epochs, num_mini_batches, output_path=output_path)        
         
         self.deep_lab_v3p = dlv3
@@ -126,6 +117,8 @@ class TrainFitter(utils.ModelFitter):
         self.train_set = train_set
         
         self.best_model_path = ''
+        
+        self.txt = 'Best Source Classifier Model:'
 
         
     def initialize(self):
@@ -143,7 +136,7 @@ class TrainFitter(utils.ModelFitter):
         print("learning rate: ", self.learning_rate)
 
         self.class_weights = torch.FloatTensor(self.weights).cuda()
-        self.seg_loss_fn = FocalLoss(weight = self.class_weights, gamma = self.gamma)		
+        self.seg_loss_fn = training_utils.FocalLoss(weight = self.class_weights, gamma = self.gamma)		
         self.optim_seg = torch.optim.Adam(self.deep_lab_v3p.parameters(), lr = self.learning_rate)
 
         self.validation_set = {}
@@ -180,7 +173,7 @@ class TrainFitter(utils.ModelFitter):
         batch = next(self.tr_coor)
         coor_batch = batch[:,:2]
         aug_batch = batch[:,2]
-        x , y = patch_extraction(self.img[self.source_domain], 
+        x , y = training_utils.patch_extraction(self.img[self.source_domain], 
             self.gt[self.source_domain], coor_batch, self.patch_size, aug_batch = aug_batch)
         batch_data.append(x)
         batch_data.append(y)
@@ -202,7 +195,7 @@ class TrainFitter(utils.ModelFitter):
         # print(return_metrics(y,x))
         # print(calcula_metricas(y,x))
 
-        acc, f1, rec, prec, alert = return_metrics(y,x)
+        acc, f1, rec, prec, alert = training_utils.return_metrics(y,x)
         metrics["seg_acc"] = acc
         metrics["seg_f1"] = f1
         metrics["seg_rec"] = rec
@@ -238,7 +231,7 @@ class TrainFitter(utils.ModelFitter):
 
                 val_x = softmax(val_x, axis = 1)
                 val_x = val_x.argmax(1)
-                acc, f1, rec, prec, alert = return_metrics(val_y, val_x)
+                acc, f1, rec, prec, alert = training_utils.return_metrics(val_y, val_x)
 
                 metrics[f"val_acc_{domain}"] = acc
                 metrics[f"val_f1_{domain}"] = f1
@@ -280,6 +273,9 @@ class TrainFitter(utils.ModelFitter):
 
         print("[*] Best model so far:", self.best_model_path)
         
+        def finalize(self):
+            utils.log_best_model(self.txt, self.best_model_path)
+        
 
 
 from dataset_preprocessing.dataset_select import select_domain
@@ -297,11 +293,11 @@ if __name__=='__main__':
     
     # source_args.patches_dimension = train_args.patch_size
     source_params.stride = source_params.train_source_stride
-    ready_domain(source, source_params, train_set = True, augmented = True)
+    training_utils.ready_domain(source, source_params, train_set = True, augmented = True)
 
     # target_args.patches_dimension = train_args.patch_size
     target_params.stride = target_params.train_source_stride
-    ready_domain(target, target_params, train_set = True, augmented = False)
+    training_utils.ready_domain(target, target_params, train_set = True, augmented = False)
     print(len(target.central_pixels_coor_vl))
     print(len(source.central_pixels_coor_vl))
     
@@ -310,4 +306,6 @@ if __name__=='__main__':
         print(train_parameters.output_path)
         best_source_model = train(source, target, train_parameters, global_parameters)
         this_models.append(best_source_model)
+        
+    print('[*] Source Training Finalized!')
 

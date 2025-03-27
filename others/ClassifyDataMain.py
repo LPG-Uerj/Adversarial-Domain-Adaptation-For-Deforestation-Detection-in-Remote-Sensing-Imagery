@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import NoNorm
 import torch
 import torch.nn as nn
-import utils
+import Desmatamento.code.utilities.utils as utils
 import torch.nn.functional as F # mog: for focal loss
 import skimage # para o prodes
 
@@ -24,7 +24,7 @@ import Amazonia_Legal as ama
 import Cerrado_Biome as cer
 
 import Networks
-from Tools import *
+from Desmatamento.code.utilities.training_utils import *
 import modeling.deeplab as d3plus
 
 
@@ -125,7 +125,7 @@ new_image = numpy.zeros((shapes[0], shapes[1], shapes[2]*2))
 new_image[:,:,:shapes[2]] = ro.images_norm[0]
 new_image[:,:,shapes[2]:] = ro.images_norm[1]
 data["RO"] = {}
-data["RO"]["image"] = utils.channels_last2first(new_image)
+data["RO"]["image"] = Desmatamento.code.utilities.utils.channels_last2first(new_image)
 print("input image shape:", data["RO"]["image"].shape)
 del shapes
 del new_image
@@ -148,7 +148,7 @@ new_image = numpy.zeros((shapes[0], shapes[1], shapes[2]*2))
 new_image[:,:,:shapes[2]] = pa.images_norm[0]
 new_image[:,:,shapes[2]:] = pa.images_norm[1]
 data["PA"] = {}
-data["PA"]["image"] = utils.channels_last2first(new_image)
+data["PA"]["image"] = Desmatamento.code.utilities.utils.channels_last2first(new_image)
 print("input image shape:", data["PA"]["image"].shape)
 del shapes
 del new_image
@@ -375,7 +375,7 @@ for model in (models):
 			count += 1
 			n = x.shape[0]
 			coor_batch = x
-			x , y = utils.patch_extraction(img, gt, coor_batch, patch_size)
+			x , y = Desmatamento.code.utilities.utils.patch_extraction(img, gt, coor_batch, patch_size)
 			x = torch.from_numpy(x).float().to(device)
 			x = classifier(x)
 			y = torch.from_numpy(y).long().to(device)

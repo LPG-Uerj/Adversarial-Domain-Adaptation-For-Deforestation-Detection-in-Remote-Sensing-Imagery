@@ -1,18 +1,21 @@
-import os
+import json
 import numpy as np
+import os
 import scipy.io as sio
 import skimage as sk
-#from osgeo import gdal
-from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, confusion_matrix
-import os
+import tifffile
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F # mog: for focal loss
-import GAN
-import tifffile
-import json
+from sklearn.metrics import f1_score, precision_score, recall_score, accuracy_score, confusion_matrix
 
-import utils
+import sys
+sys.path.append('..')
+from model_architectures import GAN
+
+from . import utils
 
 def Analyse_hyperparameters_test(args, hyperparameters_file_path):
     f = open(hyperparameters_file_path, 'r')

@@ -13,10 +13,10 @@ import json
 import numpy as np
 import torch
 import torch.nn as nn
-import utils
+import Desmatamento.code.utilities.utils as utils
 import sys
 
-from Tools import *
+from Desmatamento.code.utilities.training_utils import *
 import DeepLabV3plus
 import GAN
 
@@ -84,7 +84,7 @@ def train(source, source_args, args, global_args, gan_models_path):
         # train_set = source.adapted_train_set
         
 
-    class ModelFitter(utils.ModelFitter):
+    class ModelFitter(Desmatamento.code.utilities.utils.ModelFitter):
         def __init__(self):
             super().__init__(num_epochs, num_mini_batches, output_path=output_path)
             
@@ -139,7 +139,7 @@ def train(source, source_args, args, global_args, gan_models_path):
 
                 self.validation_set[source_domain] = torch.utils.data.DataLoader(source.central_pixels_coor_vl, 
                 batch_size = mini_batch_size)
-                self.img[source_domain] = utils.channels_last2first(source.adapted_image)
+                self.img[source_domain] = Desmatamento.code.utilities.utils.channels_last2first(source.adapted_image)
                 self.gt[source_domain] = source.new_reference
             
             self.epoch_train_set = torch.utils.data.DataLoader(train_set, 

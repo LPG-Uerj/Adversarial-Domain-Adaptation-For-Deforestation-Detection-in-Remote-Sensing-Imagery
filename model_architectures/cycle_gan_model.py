@@ -1,16 +1,12 @@
-import sys
 import torch
 import itertools
-import numpy as np
-# from util.image_pool import ImagePool
-from pedro.image_pool import ImagePool
-# from .base_model import BaseModel
-from pedro.base_model import BaseModel
-# from . import networks
-from pedro import networks
-# from torchsummary import summary
 from torchinfo import summary
 
+import sys
+sys.path.append('..')
+from utilities.base_model import BaseModel
+from utilities.image_pool import ImagePool
+from utilities import networks
 
 class CycleGANModel(BaseModel):
     """
